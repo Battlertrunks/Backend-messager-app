@@ -30,8 +30,12 @@ func wsEndpoint(w http.ResponseWriter, r *http.Request) {
 		log.Println("err", err)
 	}
 
+	defer ws.Close()
+
+	clients[ws] = true
+
 	log.Println("Client Connected")
-	err = ws.WriteMessage(1, []byte("Hello, Client!"))
+	// err = ws.WriteMessage(1, []byte("Hello, Client!"))
 	if err != nil {
 		log.Println("WriteMessage", err)
 	}
@@ -40,11 +44,13 @@ func wsEndpoint(w http.ResponseWriter, r *http.Request) {
 	reader(ws)
 }
 
+var clients = make(map[*websocket.Conn]bool) // Tracks active clients
+
 func reader(conn *websocket.Conn) {
 	// infinite loop to detect incoming messages
 	for {
 		// read in a message
-		messageType, p, err := conn.ReadMessage()
+		_, p, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("reader", err)
 			return
@@ -53,9 +59,18 @@ func reader(conn *websocket.Conn) {
 		// print out that message
 		fmt.Println(string(p))
 
-		if err := conn.WriteMessage(messageType, p); err != nil {
-			log.Println("reader write", err)
-			return
+		// if err := conn.WriteMessage(websocket.TextMessage, p); err != nil {
+		// 	log.Println("reader write", err)
+		// 	return
+		// }
+
+		// broadcast to all clients
+		for client := range clients {
+			if err := client.WriteMessage(websocket.TextMessage, p); err != nil {
+				fmt.Printf("Broadcast error:", err)
+				client.Close()
+				delete(clients, client)
+			}
 		}
 	}
 }
