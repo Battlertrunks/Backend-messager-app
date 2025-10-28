@@ -8,6 +8,9 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// TODO:
+// Evaluate effort to adding a profiles for direct messaging and DB (Extra credit work)
+
 type message struct {
 	Message string `json:"message"`
 }
@@ -44,33 +47,38 @@ func wsEndpoint(w http.ResponseWriter, r *http.Request) {
 	reader(ws)
 }
 
+// Circle back on this to look for certain clients for direct messaging (extra credit work)
 var clients = make(map[*websocket.Conn]bool) // Tracks active clients
 
 func reader(conn *websocket.Conn) {
 	// infinite loop to detect incoming messages
 	for {
 		// read in a message
-		_, p, err := conn.ReadMessage()
+		// TODO: Stop the message being read if it is from the original sender...
+		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			log.Println("reader", err)
 			return
 		}
 
 		// print out that message
-		fmt.Println(string(p))
+		fmt.Println(string(msg))
 
-		// if err := conn.WriteMessage(websocket.TextMessage, p); err != nil {
-		// 	log.Println("reader write", err)
-		// 	return
-		// }
+		writer(msg)
+	}
+}
 
-		// broadcast to all clients
-		for client := range clients {
-			if err := client.WriteMessage(websocket.TextMessage, p); err != nil {
-				fmt.Printf("Broadcast error:", err)
-				client.Close()
-				delete(clients, client)
-			}
+/*
+TODO:
+1. Make the write identify who sent the message to make a messenger and receiver on the client
+*/
+func writer(msg []byte) {
+	// broadcast to all clients
+	for client := range clients {
+		if err := client.WriteMessage(websocket.TextMessage, msg); err != nil {
+			fmt.Printf("Broadcast error:", err)
+			client.Close()
+			delete(clients, client)
 		}
 	}
 }
