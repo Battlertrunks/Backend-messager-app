@@ -12,7 +12,8 @@ import (
 // Evaluate effort to adding a profiles for direct messaging and DB (Extra credit work)
 
 type message struct {
-	Message string `json:"message"`
+	UserID 	float64 `json:UserID`
+	Message string  `json:"Message"`
 }
 
 var upgrader = websocket.Upgrader{
@@ -36,6 +37,7 @@ func wsEndpoint(w http.ResponseWriter, r *http.Request) {
 	defer ws.Close()
 
 	clients[ws] = true
+	
 
 	log.Println("Client Connected")
 	// err = ws.WriteMessage(1, []byte("Hello, Client!"))
@@ -50,21 +52,31 @@ func wsEndpoint(w http.ResponseWriter, r *http.Request) {
 // Circle back on this to look for certain clients for direct messaging (extra credit work)
 var clients = make(map[*websocket.Conn]bool) // Tracks active clients
 
+type BroadcastMessage struct {
+	Sender  *websocket.Conn
+	Message message
+}
+
 func reader(conn *websocket.Conn) {
 	// infinite loop to detect incoming messages
 	for {
 		// read in a message
 		// TODO: Stop the message being read if it is from the original sender...
-		_, msg, err := conn.ReadMessage()
+
+		var msg message
+		err := conn.ReadJSON(&msg)
 		if err != nil {
 			log.Println("reader", err)
 			return
 		}
+		// fmt.Println(msg)
+		var broadcastMessage BroadcastMessage
+		broadcastMessage.Sender = conn
+		broadcastMessage.Message.Message = msg.Message
 
-		// print out that message
-		fmt.Println(string(msg))
+		// fmt.Println(msg)
 
-		writer(msg)
+		writer(broadcastMessage)
 	}
 }
 
@@ -72,13 +84,15 @@ func reader(conn *websocket.Conn) {
 TODO:
 1. Make the write identify who sent the message to make a messenger and receiver on the client
 */
-func writer(msg []byte) {
+func writer(broadcastMessage BroadcastMessage) {
 	// broadcast to all clients
 	for client := range clients {
-		if err := client.WriteMessage(websocket.TextMessage, msg); err != nil {
-			fmt.Printf("Broadcast error:", err)
-			client.Close()
-			delete(clients, client)
+		if client != broadcastMessage.Sender {
+			if err := client.WriteMessage(websocket.TextMessage, []byte(broadcastMessage.Message.Message)); err != nil {
+				fmt.Printf("Broadcast error:", err)
+				client.Close()
+				delete(clients, client)
+			}
 		}
 	}
 }
