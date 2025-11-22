@@ -11,7 +11,11 @@ import (
 
 func setupRoutes() {
 	// Initialize the REST API
-	api.RunGin()
+	err := api.RunGin()
+	if err != nil {
+		log.Fatal("Database Failed")
+		return
+	}
 
 	// Initialize the WebSocket connection
 	// TODO: We should start the websocket based on when the user is in a live chat connection with
