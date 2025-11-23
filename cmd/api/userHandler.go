@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 
@@ -27,7 +28,7 @@ type NewUser struct {
 }
 
 func (uh *UserHandler) HandleCreateUser(ctx *gin.Context) {
-	var newUser NewUser
+	var newUser store.User
 		if err := ctx.ShouldBindJSON(&newUser); err != nil {
 			ctx.JSON(http.StatusInternalServerError, gin.H{ "message": "Error parsing JSON" })
 			return
@@ -48,5 +49,12 @@ func (uh *UserHandler) HandleCreateUser(ctx *gin.Context) {
 			return
 		}
 
-		log.Println(newUser)
+		createdUser, err := uh.userStore.CreateUser(&newUser)
+		if err != nil {
+			fmt.Println(err)
+			ctx.JSON(http.StatusBadRequest, gin.H{ "message": "Could not create user" })
+			return
+		}
+
+		ctx.JSON(http.StatusCreated, createdUser)
 }
