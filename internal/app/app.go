@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/Battlertrunks/cmd/api"
 	"github.com/Battlertrunks/database"
+	"github.com/Battlertrunks/internal/api"
 	"github.com/Battlertrunks/internal/store"
 )
 

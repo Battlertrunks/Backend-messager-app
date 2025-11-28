@@ -1,6 +1,9 @@
 package store
 
-import "database/sql"
+import (
+	"database/sql"
+	"fmt"
+)
 
 type User struct {
 	ID 				int `json:"id"`
@@ -19,6 +22,7 @@ func NewSqliteUserStore(db *sql.DB) *SqliteUserStore {
 
 type UserStore interface {
 	CreateUser(*User) (*User, error)
+	GetUser(userId uint64) (*User, error)
 }
 
 func (uh *SqliteUserStore) CreateUser(user *User) (*User, error) {
@@ -43,6 +47,32 @@ func (uh *SqliteUserStore) CreateUser(user *User) (*User, error) {
 	}
 
 	err = trans.Commit()
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (uh *SqliteUserStore) GetUser(userId uint64) (*User, error) {
+	trans, err := uh.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
+	user := &User{}
+
+	defer trans.Rollback()
+
+	query := 
+	`
+		SELECT id, email, username FROM USERS
+		WHERE id = $1
+	`
+
+	err = trans.QueryRow(query, userId).Scan(&user.ID, &user.Email, &user.Username)
+
+	fmt.Println(err)
 	if err != nil {
 		return nil, err
 	}
