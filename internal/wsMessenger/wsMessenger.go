@@ -12,7 +12,7 @@ import (
 // Evaluate effort to adding a profiles for direct messaging and DB (Extra credit work)
 
 type message struct {
-	UserID 	float64 `json:UserID`
+	UserID 	float64 `json:"UserID"`
 	Message string  `json:"Message"`
 }
 
