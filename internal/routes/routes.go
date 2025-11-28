@@ -20,6 +20,7 @@ func Routes(app *app.Application) (*gin.Engine, error) {
 		wsMessenger.WSEndpoint(ctx.Writer, ctx.Request)
 	})
 
+	route.GET("/api/v1/retrieve-user/:id", app.UserHandler.HandleRetrieveUser)
 	route.POST("/api/v1/create-user", app.UserHandler.HandleCreateUser)
 
 	return route, nil

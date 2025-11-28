@@ -6,7 +6,8 @@ CREATE TABLE users (
     email           TEXT NOT NULL UNIQUE,
     password_hash   TEXT NOT NULL,
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    deactivated_at  DATETIME NULL
 );
 -- +goose StatementEnd
 
