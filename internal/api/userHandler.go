@@ -12,49 +12,53 @@ import (
 
 type UserHandler struct {
 	userStore store.UserStore
-	logger *log.Logger
+	logger    *log.Logger
 }
 
 func NewUserHandler(userStore store.UserStore, logger *log.Logger) *UserHandler {
 	return &UserHandler{
 		userStore: userStore,
-		logger: 	 logger,
+		logger:    logger,
 	}
 }
 
 type NewUser struct {
 	Username string `json:"username"`
-	Email 	 string `json:"email"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
+type UserResponse struct {
+	Username string
+	Email    string
+}
+
 func (uh *UserHandler) HandleCreateUser(ctx *gin.Context) {
-	fmt.Println("TEST CREATE")
 	var newUser store.User
 	if err := ctx.ShouldBindJSON(&newUser); err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{ "message": "Error parsing JSON" })
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Error parsing JSON"})
 		return
 	}
-	
+
 	if newUser.Email == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{ "message": "Missing 'email' value..." })
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Missing 'email' value..."})
 		return
 	}
 
 	if newUser.Username == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{ "message": "Missing 'username' value..." })
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Missing 'username' value..."})
 		return
 	}
 
 	if newUser.Password == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{ "message": "Missing 'password' value..." })
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Missing 'password' value..."})
 		return
 	}
 
 	createdUser, err := uh.userStore.CreateUser(&newUser)
 	if err != nil {
 		fmt.Println(err)
-		ctx.JSON(http.StatusBadRequest, gin.H{ "message": "Could not create user" })
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Could not create user"})
 		return
 	}
 
@@ -62,7 +66,6 @@ func (uh *UserHandler) HandleCreateUser(ctx *gin.Context) {
 }
 
 func (uh *UserHandler) HandleRetrieveUser(ctx *gin.Context) {
-	fmt.Println("TEST")
 	userIdStr, exists := ctx.Params.Get("id")
 	// If the param is not existent in the params
 	fmt.Println(exists, userIdStr)
@@ -91,4 +94,15 @@ func (uh *UserHandler) HandleRetrieveUser(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusAccepted, user)
+}
+
+func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
+	// TODO: Write the user login using cookies
+	// Think about how to add this to the session for the user
+	// Find some helpful resources
+}
+
+func (uh *UserHandler) HandleUserLogout(ctx *gin.Context) {
+	// TODO: Write the user logout functionality from cookies
+
 }

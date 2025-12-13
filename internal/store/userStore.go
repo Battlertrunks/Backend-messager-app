@@ -3,13 +3,15 @@ package store
 import (
 	"database/sql"
 	"fmt"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 type User struct {
-	ID 				int `json:"id"`
-	Username 	string `json:"username"`
-	Email 		string `json:"email"`
-	Password 	string `json:"password"`
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type SqliteUserStore struct {
@@ -21,11 +23,16 @@ func NewSqliteUserStore(db *sql.DB) *SqliteUserStore {
 }
 
 type UserStore interface {
-	CreateUser(*User) (*User, error)
+	CreateUser(*User) (*UserResponse, error)
 	GetUser(userId uint64) (*User, error)
 }
 
-func (uh *SqliteUserStore) CreateUser(user *User) (*User, error) {
+type UserResponse struct {
+	Username string
+	Email    string
+}
+
+func (uh *SqliteUserStore) CreateUser(user *User) (*UserResponse, error) {
 	trans, err := uh.db.Begin()
 	if err != nil {
 		return nil, err
@@ -33,15 +40,22 @@ func (uh *SqliteUserStore) CreateUser(user *User) (*User, error) {
 
 	defer trans.Rollback()
 
+	// Hash the user password...
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 5)
+	if err != nil {
+		fmt.Println("Error, couldn't hash the password:", err)
+		return nil, err
+	}
+
 	// Create user query
 	query :=
-	`
+		`
 		INSERT INTO users (username, email, password_hash)
 		VALUES ($1, $2, $3)
 		RETURNING id
 	`
 
-	err = trans.QueryRow(query, user.Username, user.Email, user.Password).Scan(&user.ID)
+	err = trans.QueryRow(query, user.Username, user.Email, hashedPassword).Scan(&user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +65,7 @@ func (uh *SqliteUserStore) CreateUser(user *User) (*User, error) {
 		return nil, err
 	}
 
-	return user, nil
+	return &UserResponse{user.Username, user.Email}, nil
 }
 
 func (uh *SqliteUserStore) GetUser(userId uint64) (*User, error) {
@@ -64,8 +78,8 @@ func (uh *SqliteUserStore) GetUser(userId uint64) (*User, error) {
 
 	defer trans.Rollback()
 
-	query := 
-	`
+	query :=
+		`
 		SELECT id, email, username FROM USERS
 		WHERE id = $1
 	`
