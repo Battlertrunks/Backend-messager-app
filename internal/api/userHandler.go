@@ -40,6 +40,7 @@ func (uh *UserHandler) HandleCreateUser(ctx *gin.Context) {
 		return
 	}
 
+	// TODO: Can these checks be more consolidated or universal?
 	if newUser.Email == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Missing 'email' value..."})
 		return
@@ -55,10 +56,15 @@ func (uh *UserHandler) HandleCreateUser(ctx *gin.Context) {
 		return
 	}
 
+	if len(newUser.Username) < 8 || len(newUser.Password) < 8 {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Username and Password cannot be less than 8 characters"})
+		return
+	}
+	// -----------------------------------------------------------
+
 	createdUser, err := uh.userStore.CreateUser(&newUser)
 	if err != nil {
-		fmt.Println(err)
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Could not create user"})
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
@@ -97,9 +103,27 @@ func (uh *UserHandler) HandleRetrieveUser(ctx *gin.Context) {
 }
 
 func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
-	// TODO: Write the user login using cookies
-	// Think about how to add this to the session for the user
-	// Find some helpful resources
+	var userLogin store.LoginData
+	if err := ctx.ShouldBindJSON(&userLogin); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
+	sessionToken, err := uh.userStore.Login(userLogin)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
+
+	ctx.SetCookie(
+		"session_cookie",
+		sessionToken,
+		60*60*24, // a day: 24 hours
+		"/",
+		"localhost", // use a env variable later on
+		true,
+		true,
+	)
 }
 
 func (uh *UserHandler) HandleUserLogout(ctx *gin.Context) {
