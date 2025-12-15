@@ -30,6 +30,8 @@ type UserStore interface {
 	CreateUser(*User) (*UserResponse, error)
 	GetUser(userId uint64) (*User, error)
 	Login(loginData UserData) (string, string, error)
+	AuthorizeUser(AuthorizeData) error
+	Logout(username, sessionCookie string) (string, error)
 }
 
 type UserResponse struct {
@@ -185,4 +187,68 @@ func generateToken(length int) string {
 	}
 
 	return base64.URLEncoding.EncodeToString(bytes)
+}
+
+type AuthorizeData struct {
+	Username     string `json:"username"`
+	SessionToken string `json:"session_token"`
+	CSRFToken    string `json:"csrf_token"`
+}
+
+func (uh *SqliteUserStore) AuthorizeUser(authData AuthorizeData) error {
+	trans, err := uh.db.Begin()
+	if err != nil {
+		return err
+	}
+
+	defer trans.Rollback()
+
+	query :=
+		`
+		SELECT session_token, csrf_token FROM users
+		WHERE username = $1
+		`
+
+	type InHouseTokens struct {
+		SessionToken string
+		CSRFToken    string
+	}
+
+	var tokens InHouseTokens
+	err = trans.QueryRow(query, authData.Username).Scan(&tokens)
+	if errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	sessionTokenValid := tokens.SessionToken != "" && tokens.SessionToken == authData.SessionToken
+	csrfTokenValid := tokens.CSRFToken != "" && tokens.CSRFToken == authData.CSRFToken
+
+	if !sessionTokenValid || csrfTokenValid {
+		return errors.New("Unathorized access of user")
+	}
+
+	return nil
+}
+
+func (uh *SqliteUserStore) Logout(username, sessionCookie string) (string, error) {
+	trans, err := uh.db.Begin()
+	if err != nil {
+		return "", err
+	}
+
+	defer trans.Rollback()
+
+	query :=
+		`
+		SELECT session_token FROM users
+		WHERE username = $1
+		`
+
+	var sessionToken string
+	err = trans.QueryRow(query, username).Scan(&sessionToken)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+
+	return "", nil
 }

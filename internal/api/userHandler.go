@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -141,6 +142,36 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 }
 
 func (uh *UserHandler) HandleUserLogout(ctx *gin.Context) {
-	// TODO: Write the user logout functionality from cookies
+	username := ctx.Param("username")
+	if username == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid username"})
+	}
 
+	if err := uh.AuthorizeUser(ctx); err != nil {
+		ctx.AbortWithError(http.StatusUnauthorized, err)
+	}
+
+	ctx.JSON(http.StatusCreated, gin.H{"status": "..."})
+}
+
+func (uh *UserHandler) AuthorizeUser(ctx *gin.Context) error {
+	var userAuth store.AuthorizeData
+	userAuth.Username = ctx.Param("username")
+	if userAuth.Username == "" {
+		return errors.New("Unathorized access of user 1") // remove digit
+	}
+
+	var err error
+	userAuth.SessionToken, err = ctx.Cookie("session_token")
+	userAuth.CSRFToken = ctx.GetHeader("X-CSRF-Token")
+	if userAuth.CSRFToken == "" || err != nil {
+		return errors.New("Unathorized access of user 2") // remove digit
+	}
+
+	err = uh.userStore.AuthorizeUser(userAuth)
+	if err != nil {
+		return err
+	}
+
+	return nil // User is correctly authenticated
 }
