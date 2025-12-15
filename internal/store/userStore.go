@@ -29,7 +29,7 @@ func NewSqliteUserStore(db *sql.DB) *SqliteUserStore {
 type UserStore interface {
 	CreateUser(*User) (*UserResponse, error)
 	GetUser(userId uint64) (*User, error)
-	Login(loginData LoginData) (string, error)
+	Login(loginData UserData) (string, string, error)
 }
 
 type UserResponse struct {
@@ -118,37 +118,59 @@ func (uh *SqliteUserStore) GetUser(userId uint64) (*User, error) {
 	return user, nil
 }
 
-type LoginData struct {
-	username string
-	password string
+type UserData struct {
+	ID       int
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
-func (uh *SqliteUserStore) Login(loginData LoginData) (string, error) {
+func (uh *SqliteUserStore) Login(loginData UserData) (string, string, error) {
 	trans, err := uh.db.Begin()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	defer trans.Rollback()
 
 	query :=
 		`
-		SELECT username, password FROM users
+		SELECT id, username, password_hash FROM users
 		WHERE username = $1
 		`
 
 	// Check if the username is legitimate or not
-	user := &LoginData{}
-	err = trans.QueryRow(query, loginData.username).Scan(&user.username, &user.password)
+	user := &UserData{}
+	fmt.Printf("username: %v passowrd: %v \n", loginData.Username, loginData.Password)
+	err = trans.QueryRow(query, loginData.Username).Scan(&user.ID, &user.Username, &user.Password)
 
-	if errors.Is(err, sql.ErrNoRows) || !checkPasswordHash([]byte(loginData.password), []byte(user.password)) {
+	if errors.Is(err, sql.ErrNoRows) || !checkPasswordHash([]byte(loginData.Password), []byte(user.Password)) {
+		fmt.Println(err)
 		invalidUsername := errors.New("Invalid username or password")
-		return "", invalidUsername
+		return "", "", invalidUsername
 	}
 
 	sessionToken := generateToken(32)
+	csrfToken := generateToken(32)
 
-	return sessionToken, nil
+	sessionQuery :=
+		`
+		UPDATE users SET
+		session_token = $1,
+		csrf_token = $2,
+		updated_at = CURRENT_TIMESTAMP
+		WHERE id = $3
+		`
+
+	fmt.Printf("sessionToken: %v , csrfToken: %v %v \n", sessionToken, csrfToken, user.ID)
+	_, err = trans.Exec(sessionQuery, sessionToken, csrfToken, user.ID)
+	if err != nil {
+		fmt.Println(err)
+		return "", "", err
+	}
+
+	trans.Commit() // applies the update
+
+	return sessionToken, csrfToken, nil
 }
 
 func checkPasswordHash(password, hash []byte) bool {

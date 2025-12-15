@@ -103,18 +103,19 @@ func (uh *UserHandler) HandleRetrieveUser(ctx *gin.Context) {
 }
 
 func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
-	var userLogin store.LoginData
+	var userLogin store.UserData
 	if err := ctx.ShouldBindJSON(&userLogin); err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
-	sessionToken, err := uh.userStore.Login(userLogin)
+	sessionToken, csrfToken, err := uh.userStore.Login(userLogin)
 	if err != nil {
 		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
 		return
 	}
 
+	// Set session token
 	ctx.SetCookie(
 		"session_cookie",
 		sessionToken,
@@ -124,6 +125,19 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 		true,
 		true,
 	)
+
+	// Set cross site request forgery token
+	ctx.SetCookie(
+		"csrf_token",
+		csrfToken,
+		60*60*24, // a day: 24 hours
+		"/",
+		"localhost", // use a env variable later on
+		true,
+		false,
+	)
+
+	ctx.JSON(http.StatusCreated, gin.H{"username": userLogin.Username, "password": userLogin.Password})
 }
 
 func (uh *UserHandler) HandleUserLogout(ctx *gin.Context) {
