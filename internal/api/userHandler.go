@@ -118,9 +118,9 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 
 	// Set session token
 	ctx.SetCookie(
-		"session_cookie",
+		"session_token",
 		sessionToken,
-		60*60*24, // a day: 24 hours
+		60, // *60*24, // a day: 24 hours
 		"/",
 		"localhost", // use a env variable later on
 		true,
@@ -128,10 +128,11 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 	)
 
 	// Set cross site request forgery token
+	// TODO: Find a middleware to wrap the CSRF with Gorrila
 	ctx.SetCookie(
 		"csrf_token",
 		csrfToken,
-		60*60*24, // a day: 24 hours
+		60, // *60*24, // a day: 24 hours
 		"/",
 		"localhost", // use a env variable later on
 		true,
@@ -142,28 +143,35 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 }
 
 func (uh *UserHandler) HandleUserLogout(ctx *gin.Context) {
-	username := ctx.Param("username")
-	if username == "" {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": "Invalid username"})
+	var body struct {
+		Username string `json:"username"`
+	}
+	err := ctx.ShouldBindJSON(&body)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
 	}
 
-	if err := uh.AuthorizeUser(ctx); err != nil {
+	if err := uh.AuthorizeUser(ctx, body.Username); err != nil {
 		ctx.AbortWithError(http.StatusUnauthorized, err)
+		return
 	}
 
 	ctx.JSON(http.StatusCreated, gin.H{"status": "..."})
 }
 
-func (uh *UserHandler) AuthorizeUser(ctx *gin.Context) error {
+func (uh *UserHandler) AuthorizeUser(ctx *gin.Context, username string) error {
 	var userAuth store.AuthorizeData
-	userAuth.Username = ctx.Param("username")
+	userAuth.Username = username
 	if userAuth.Username == "" {
 		return errors.New("Unathorized access of user 1") // remove digit
 	}
 
 	var err error
 	userAuth.SessionToken, err = ctx.Cookie("session_token")
+	// TODO: Find a middleware to wrap the CSRF with Gorrila
 	userAuth.CSRFToken = ctx.GetHeader("X-CSRF-Token")
+	fmt.Printf("SessionToken: %v \n csrfToken: %v \n", userAuth.SessionToken, userAuth.CSRFToken)
 	if userAuth.CSRFToken == "" || err != nil {
 		return errors.New("Unathorized access of user 2") // remove digit
 	}

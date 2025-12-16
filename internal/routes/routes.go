@@ -28,7 +28,7 @@ func Routes(app *app.Application) (*gin.Engine, error) {
 	route.GET("/api/v1/retrieve-user/:id", app.UserHandler.HandleRetrieveUser)
 	route.POST("/api/v1/create-user", app.UserHandler.HandleCreateUser)
 	route.POST("/api/v1/login", app.UserHandler.HandleUserLogin)
-	route.POST("/api/v1/logout")
+	route.POST("/api/v1/logout", app.UserHandler.HandleUserLogout)
 	route.POST("/api/v1/protected") // Do I need that?
 
 	return route, nil
