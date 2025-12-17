@@ -1,11 +1,14 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Battlertrunks/internal/store"
 	"github.com/gin-gonic/gin"
@@ -110,11 +113,8 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 		return
 	}
 
-	sessionToken, csrfToken, err := uh.userStore.Login(userLogin)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-		return
-	}
+	sessionToken := generateToken(32)
+	csrfToken := generateToken(32)
 
 	// Set session token
 	ctx.SetCookie(
@@ -128,18 +128,29 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 	)
 
 	// Set cross site request forgery token
-	// TODO: Find a middleware to wrap the CSRF with Gorrila
-	ctx.SetCookie(
-		"csrf_token",
-		csrfToken,
-		60, // *60*24, // a day: 24 hours
-		"/",
-		"localhost", // use a env variable later on
-		true,
-		false,
-	)
+	http.SetCookie(ctx.Writer, &http.Cookie{
+		Name:     "csrf_token",
+		Value:    csrfToken,
+		Expires:  time.Now().Add(24 * time.Hour),
+		HttpOnly: false,
+	})
+
+	err := uh.userStore.Login(userLogin, sessionToken, csrfToken)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+		return
+	}
 
 	ctx.JSON(http.StatusCreated, gin.H{"username": userLogin.Username, "password": userLogin.Password})
+}
+
+func generateToken(length int) string {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		log.Fatalf("Failed to generate token: %v", err)
+	}
+
+	return base64.URLEncoding.EncodeToString(bytes)
 }
 
 func (uh *UserHandler) HandleUserLogout(ctx *gin.Context) {
@@ -171,6 +182,7 @@ func (uh *UserHandler) AuthorizeUser(ctx *gin.Context, username string) error {
 	userAuth.SessionToken, err = ctx.Cookie("session_token")
 	// TODO: Find a middleware to wrap the CSRF with Gorrila
 	userAuth.CSRFToken = ctx.GetHeader("X-CSRF-Token")
+	fmt.Println(userAuth.CSRFToken)
 	fmt.Printf("SessionToken: %v \n csrfToken: %v \n", userAuth.SessionToken, userAuth.CSRFToken)
 	if userAuth.CSRFToken == "" || err != nil {
 		return errors.New("Unathorized access of user 2") // remove digit

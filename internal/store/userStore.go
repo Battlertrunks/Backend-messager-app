@@ -1,12 +1,9 @@
 package store
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
-	"log"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -29,7 +26,7 @@ func NewSqliteUserStore(db *sql.DB) *SqliteUserStore {
 type UserStore interface {
 	CreateUser(*User) (*UserResponse, error)
 	GetUser(userId uint64) (*User, error)
-	Login(loginData UserData) (string, string, error)
+	Login(loginData UserData, sessionToken, csrfToken string) error // optimize
 	AuthorizeUser(AuthorizeData) error
 	Logout(username, sessionCookie string) (string, error)
 }
@@ -126,10 +123,10 @@ type UserData struct {
 	Password string `json:"password"`
 }
 
-func (uh *SqliteUserStore) Login(loginData UserData) (string, string, error) {
+func (uh *SqliteUserStore) Login(loginData UserData, sessionToken, csrfToken string) error {
 	trans, err := uh.db.Begin()
 	if err != nil {
-		return "", "", err
+		return err
 	}
 
 	defer trans.Rollback()
@@ -148,11 +145,8 @@ func (uh *SqliteUserStore) Login(loginData UserData) (string, string, error) {
 	if errors.Is(err, sql.ErrNoRows) || !checkPasswordHash([]byte(loginData.Password), []byte(user.Password)) {
 		fmt.Println(err)
 		invalidUsername := errors.New("Invalid username or password")
-		return "", "", invalidUsername
+		return invalidUsername
 	}
-
-	sessionToken := generateToken(32)
-	csrfToken := generateToken(32)
 
 	sessionQuery :=
 		`
@@ -167,26 +161,17 @@ func (uh *SqliteUserStore) Login(loginData UserData) (string, string, error) {
 	_, err = trans.Exec(sessionQuery, sessionToken, csrfToken, user.ID)
 	if err != nil {
 		fmt.Println(err)
-		return "", "", err
+		return err
 	}
 
 	trans.Commit() // applies the update
 
-	return sessionToken, csrfToken, nil
+	return nil
 }
 
 func checkPasswordHash(password, hash []byte) bool {
 	err := bcrypt.CompareHashAndPassword(hash, password)
 	return err == nil
-}
-
-func generateToken(length int) string {
-	bytes := make([]byte, length)
-	if _, err := rand.Read(bytes); err != nil {
-		log.Fatalf("Failed to generate token: %v", err)
-	}
-
-	return base64.URLEncoding.EncodeToString(bytes)
 }
 
 type AuthorizeData struct {
@@ -215,7 +200,7 @@ func (uh *SqliteUserStore) AuthorizeUser(authData AuthorizeData) error {
 	}
 
 	var tokens InHouseTokens
-	err = trans.QueryRow(query, authData.Username).Scan(&tokens)
+	err = trans.QueryRow(query, authData.Username).Scan(&tokens.SessionToken, &tokens.CSRFToken)
 	if errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -223,7 +208,9 @@ func (uh *SqliteUserStore) AuthorizeUser(authData AuthorizeData) error {
 	sessionTokenValid := tokens.SessionToken != "" && tokens.SessionToken == authData.SessionToken
 	csrfTokenValid := tokens.CSRFToken != "" && tokens.CSRFToken == authData.CSRFToken
 
-	if !sessionTokenValid || csrfTokenValid {
+	fmt.Printf("Sess: %v, csrf: %v\n", tokens.SessionToken, tokens.CSRFToken)
+	fmt.Printf("Sess: %v, csrf: %v\n", authData.SessionToken, authData.CSRFToken)
+	if !sessionTokenValid || !csrfTokenValid {
 		return errors.New("Unathorized access of user")
 	}
 
