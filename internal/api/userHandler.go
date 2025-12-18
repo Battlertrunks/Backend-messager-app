@@ -3,7 +3,6 @@ package api
 import (
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Battlertrunks/internal/store"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -116,9 +116,27 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 	sessionToken := generateToken(32)
 	tokenExpiresAt := time.Hour * 24
 
-	err := uh.userStore.Login(userLogin, sessionToken, tokenExpiresAt)
+	userLoginResponse, err := uh.userStore.Login(userLogin, sessionToken, tokenExpiresAt)
 	if err != nil {
+		fmt.Println("500 ERROR")
 		ctx.JSON(http.StatusServiceUnavailable, gin.H{"message": "Unable to store session data"})
+		return
+	}
+
+	fmt.Println("Pre session")
+
+	session := sessions.Default(ctx)
+	fmt.Println("Default")
+	session.Set("userID", userLoginResponse.UserID)
+	session.Set("username", userLoginResponse.Username)
+	fmt.Println("Sets")
+	err = session.Save()
+
+	fmt.Println("RUN")
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Could not save to session"})
+		return
 	}
 
 	// Set session token
@@ -184,25 +202,3 @@ func (uh *UserHandler) GenerateCSRFToken(ctx *gin.Context) {
 // - Update the Middleware in internal/routes to look into the sessions based on user_id to compare the
 //   session token with what is in the cookie
 // Remove this func, AuthorizeUser and the one in internal/store
-
-func (uh *UserHandler) AuthorizeUser(ctx *gin.Context, username string) error {
-	var userAuth store.AuthorizeData
-	userAuth.Username = username
-	if userAuth.Username == "" {
-		return errors.New("Unathorized access of user 1") // remove digit
-	}
-
-	var err error
-	userAuth.SessionToken, err = ctx.Cookie("session_token")
-	fmt.Printf("SessionToken: %v \n csrfToken: %v \n", userAuth.SessionToken, userAuth.CSRFToken)
-	if userAuth.CSRFToken == "" || err != nil {
-		return errors.New("Unathorized access of user 2") // remove digit
-	}
-
-	err = uh.userStore.AuthorizeUser(userAuth)
-	if err != nil {
-		return err
-	}
-
-	return nil // User is correctly authenticated
-}

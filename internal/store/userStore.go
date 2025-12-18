@@ -27,7 +27,7 @@ func NewSqliteUserStore(db *sql.DB) *SqliteUserStore {
 type UserStore interface {
 	CreateUser(*User) (*UserResponse, error)
 	GetUser(userId uint64) (*User, error)
-	Login(loginData UserData, sessionToken string, tokenExpiresAt time.Duration) error // optimize
+	Login(loginData UserData, sessionToken string, tokenExpiresAt time.Duration) (*UserLoginResponse, error) // optimize
 	AuthorizeUser(AuthorizeData) error
 	Logout(username, sessionCookie string) (string, error)
 }
@@ -124,10 +124,15 @@ type UserData struct {
 	Password string `json:"password"`
 }
 
-func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenExpiresAt time.Duration) error {
+type UserLoginResponse struct {
+	UserID   int
+	Username string
+}
+
+func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenExpiresAt time.Duration) (*UserLoginResponse, error) {
 	trans, err := uh.db.Begin()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	defer trans.Rollback()
@@ -145,7 +150,7 @@ func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenE
 	if errors.Is(err, sql.ErrNoRows) || !checkPasswordHash([]byte(loginData.Password), []byte(user.Password)) {
 		fmt.Println(err)
 		invalidUsername := errors.New("Invalid username or password")
-		return invalidUsername
+		return nil, invalidUsername
 	}
 
 	// Create the new session for the user that is logging in...
@@ -161,12 +166,15 @@ func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenE
 	_, err = trans.Exec(sessionQuery, user.ID, sessionToken, time.Now().Add(tokenExpiresAt))
 	if err != nil {
 		fmt.Println(err)
-		return err
+		return nil, err
 	}
 
-	trans.Commit() // applies the update
+	fmt.Println("Pre-commiting")
 
-	return nil
+	trans.Commit() // applies the update
+	userLoginResponse := UserLoginResponse{user.ID, user.Username}
+	fmt.Println("pre-returning")
+	return &userLoginResponse, nil
 }
 
 func checkPasswordHash(password, hash []byte) bool {
@@ -175,9 +183,8 @@ func checkPasswordHash(password, hash []byte) bool {
 }
 
 type AuthorizeData struct {
-	Username     string `json:"username"`
-	SessionToken string `json:"session_token"`
-	CSRFToken    string `json:"csrf_token"`
+	UserID       int
+	SessionToken string
 }
 
 func (uh *SqliteUserStore) AuthorizeUser(authData AuthorizeData) error {
@@ -190,8 +197,9 @@ func (uh *SqliteUserStore) AuthorizeUser(authData AuthorizeData) error {
 
 	query :=
 		`
-		SELECT session_token, csrf_token FROM users
-		WHERE username = $1
+		SELECT user_id, session_token FROM sessions
+			WHERE user_id = $1
+			AND expire_at > DATETIME('now')
 		`
 
 	type InHouseTokens struct {
@@ -199,19 +207,18 @@ func (uh *SqliteUserStore) AuthorizeUser(authData AuthorizeData) error {
 		CSRFToken    string
 	}
 
-	var tokens InHouseTokens
-	err = trans.QueryRow(query, authData.Username).Scan(&tokens.SessionToken, &tokens.CSRFToken)
+	var token string
+	err = trans.QueryRow(query, authData.UserID).Scan(token)
 	if errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 
-	sessionTokenValid := tokens.SessionToken != "" && tokens.SessionToken == authData.SessionToken
-	csrfTokenValid := tokens.CSRFToken != "" && tokens.CSRFToken == authData.CSRFToken
+	isSessionTokenValid := token == authData.SessionToken
 
-	fmt.Printf("Sess: %v, csrf: %v\n", tokens.SessionToken, tokens.CSRFToken)
-	fmt.Printf("Sess: %v, csrf: %v\n", authData.SessionToken, authData.CSRFToken)
-	if !sessionTokenValid || !csrfTokenValid {
-		return errors.New("Unathorized access of user")
+	fmt.Printf("Sess: %v\n", token)
+	fmt.Printf("Sess: %v\n", authData.SessionToken)
+	if !isSessionTokenValid {
+		return errors.New("Unathorized user")
 	}
 
 	return nil

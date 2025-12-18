@@ -2,30 +2,41 @@ package middleware
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
+	"github.com/Battlertrunks/internal/store"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
-func SessionsMiddleware() gin.HandlerFunc {
+type UserHandler struct {
+	userStore store.UserStore
+	logger    *log.Logger
+}
+
+func (uh *UserHandler) SessionsMiddleware() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		if !strings.Contains(ctx.Request.URL.RawPath, "/api/v1/login") && ctx.Request.Method != "POST" {
 			ctx.Next()
 			return
 		}
 
-		sessionToken, err := ctx.Cookie("session_token")
+		SessionToken, err := ctx.Cookie("session_token")
 		if err != nil {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			ctx.Next()
 			return
 		}
 
-		// TODO call the user store to authorize the session token...
-		fmt.Printf("Create the cookie evaluation to the store for session token: %v\n", sessionToken)
+		session := sessions.Default(ctx)
+		sessionUserID := session.Get("userID")
 
-		// TODO When the call from the store is falsey err, run this.
+		UserID := sessionUserID.(int)
+
+		fmt.Printf("Create the cookie evaluation to the store for session token: %v\n", SessionToken)
+		err = uh.userStore.AuthorizeUser(store.AuthorizeData{UserID: UserID, SessionToken: SessionToken})
 		if err != nil {
 			ctx.AbortWithStatus(http.StatusUnauthorized)
 			ctx.Next()

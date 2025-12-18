@@ -6,6 +6,8 @@ import (
 	"github.com/Battlertrunks/internal/app"
 	"github.com/Battlertrunks/internal/middleware"
 	"github.com/Battlertrunks/internal/wsMessenger"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -13,6 +15,8 @@ func Routes(app *app.Application) (*gin.Engine, error) {
 	route := gin.Default()
 
 	route.Use(middleware.CSRFMiddleware())
+	store := cookie.NewStore([]byte("the-secret-key"))
+	route.Use(sessions.Sessions("appsession", store))
 
 	// TODO: Make the category of routes to be in their own go file that meets here with the Routes
 	// This can avoid too much clutter in the routes
@@ -28,7 +32,7 @@ func Routes(app *app.Application) (*gin.Engine, error) {
 	})
 
 	// --- CSRF token creation ---
-	route.POST("/api/v1/create-user", app.UserHandler.HandleCreateUser)
+	route.GET("/api/v1/generate-csrf-token", app.UserHandler.GenerateCSRFToken)
 
 	// --- User Routes ---
 	route.GET("/api/v1/retrieve-user/:id", app.UserHandler.HandleRetrieveUser)
