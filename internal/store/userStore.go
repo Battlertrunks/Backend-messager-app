@@ -140,7 +140,6 @@ func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenE
 
 	// Check if the username is legitimate or not...
 	user := &UserData{}
-	fmt.Printf("username: %v passowrd: %v \n", loginData.Username, loginData.Password)
 	err = trans.QueryRow(query, loginData.Username).Scan(&user.ID, &user.Username, &user.Password)
 
 	if errors.Is(err, sql.ErrNoRows) || !checkPasswordHash([]byte(loginData.Password), []byte(user.Password)) {
