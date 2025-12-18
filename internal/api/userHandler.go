@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Battlertrunks/internal/store"
 	"github.com/gin-gonic/gin"
@@ -113,32 +114,23 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 	}
 
 	sessionToken := generateToken(32)
-	// csrfToken := generateToken(32)
+	tokenExpiresAt := time.Hour * 24
+
+	err := uh.userStore.Login(userLogin, sessionToken, tokenExpiresAt)
+	if err != nil {
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"message": "Unable to store session data"})
+	}
 
 	// Set session token
 	ctx.SetCookie(
 		"session_token",
 		sessionToken,
-		60*60, // *60*24, // a day: 24 hours
+		int(tokenExpiresAt),
 		"/",
 		"localhost", // use a env variable later on
 		true,
 		true,
 	)
-
-	// Set cross site request forgery token
-	// http.SetCookie(ctx.Writer, &http.Cookie{
-	// 	Name:     "csrf_token",
-	// 	Value:    csrfToken,
-	// 	Expires:  time.Now().Add(24 * time.Hour),
-	// 	HttpOnly: false,
-	// })
-
-	// err := uh.userStore.Login(userLogin, sessionToken, csrfToken)
-	// if err != nil {
-	// 	ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-	// 	return
-	// }
 
 	ctx.JSON(http.StatusCreated, gin.H{"username": userLogin.Username, "password": userLogin.Password})
 }

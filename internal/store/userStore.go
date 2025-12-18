@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -26,7 +27,7 @@ func NewSqliteUserStore(db *sql.DB) *SqliteUserStore {
 type UserStore interface {
 	CreateUser(*User) (*UserResponse, error)
 	GetUser(userId uint64) (*User, error)
-	Login(loginData UserData, sessionToken, csrfToken string) error // optimize
+	Login(loginData UserData, sessionToken string, tokenExpiresAt time.Duration) error // optimize
 	AuthorizeUser(AuthorizeData) error
 	Logout(username, sessionCookie string) (string, error)
 }
@@ -123,7 +124,7 @@ type UserData struct {
 	Password string `json:"password"`
 }
 
-func (uh *SqliteUserStore) Login(loginData UserData, sessionToken, csrfToken string) error {
+func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenExpiresAt time.Duration) error {
 	trans, err := uh.db.Begin()
 	if err != nil {
 		return err
@@ -137,7 +138,7 @@ func (uh *SqliteUserStore) Login(loginData UserData, sessionToken, csrfToken str
 		WHERE username = $1
 		`
 
-	// Check if the username is legitimate or not
+	// Check if the username is legitimate or not...
 	user := &UserData{}
 	fmt.Printf("username: %v passowrd: %v \n", loginData.Username, loginData.Password)
 	err = trans.QueryRow(query, loginData.Username).Scan(&user.ID, &user.Username, &user.Password)
@@ -148,17 +149,17 @@ func (uh *SqliteUserStore) Login(loginData UserData, sessionToken, csrfToken str
 		return invalidUsername
 	}
 
+	// Create the new session for the user that is logging in...
 	sessionQuery :=
 		`
-		UPDATE users SET
-		session_token = $1,
-		csrf_token = $2,
-		updated_at = CURRENT_TIMESTAMP
-		WHERE id = $3
+		INSERT INTO sessions (user_id, session_token, expires_at)
+			VALUES ($1, $2, $3)
+			RETURNING session_token;
 		`
 
-	fmt.Printf("sessionToken: %v , csrfToken: %v %v \n", sessionToken, csrfToken, user.ID)
-	_, err = trans.Exec(sessionQuery, sessionToken, csrfToken, user.ID)
+	fmt.Printf("sessionToken: %v %v %v \n", user.ID, sessionToken, tokenExpiresAt)
+	// Set the expiration date from "now" to be 24 hours ahead
+	_, err = trans.Exec(sessionQuery, user.ID, sessionToken, time.Now().Add(tokenExpiresAt))
 	if err != nil {
 		fmt.Println(err)
 		return err
