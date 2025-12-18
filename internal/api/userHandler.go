@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/Battlertrunks/internal/store"
 	"github.com/gin-gonic/gin"
@@ -114,13 +113,13 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 	}
 
 	sessionToken := generateToken(32)
-	csrfToken := generateToken(32)
+	// csrfToken := generateToken(32)
 
 	// Set session token
 	ctx.SetCookie(
 		"session_token",
 		sessionToken,
-		60, // *60*24, // a day: 24 hours
+		60*60, // *60*24, // a day: 24 hours
 		"/",
 		"localhost", // use a env variable later on
 		true,
@@ -128,18 +127,18 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 	)
 
 	// Set cross site request forgery token
-	http.SetCookie(ctx.Writer, &http.Cookie{
-		Name:     "csrf_token",
-		Value:    csrfToken,
-		Expires:  time.Now().Add(24 * time.Hour),
-		HttpOnly: false,
-	})
+	// http.SetCookie(ctx.Writer, &http.Cookie{
+	// 	Name:     "csrf_token",
+	// 	Value:    csrfToken,
+	// 	Expires:  time.Now().Add(24 * time.Hour),
+	// 	HttpOnly: false,
+	// })
 
-	err := uh.userStore.Login(userLogin, sessionToken, csrfToken)
-	if err != nil {
-		ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
-		return
-	}
+	// err := uh.userStore.Login(userLogin, sessionToken, csrfToken)
+	// if err != nil {
+	// 	ctx.JSON(http.StatusBadRequest, gin.H{"message": err.Error()})
+	// 	return
+	// }
 
 	ctx.JSON(http.StatusCreated, gin.H{"username": userLogin.Username, "password": userLogin.Password})
 }
@@ -163,13 +162,36 @@ func (uh *UserHandler) HandleUserLogout(ctx *gin.Context) {
 		return
 	}
 
-	if err := uh.AuthorizeUser(ctx, body.Username); err != nil {
-		ctx.AbortWithError(http.StatusUnauthorized, err)
-		return
-	}
+	// if err := uh.AuthorizeUser(ctx, body.Username); err != nil {
+	// 	ctx.AbortWithError(http.StatusUnauthorized, err)
+	// 	return
+	// }
 
 	ctx.JSON(http.StatusCreated, gin.H{"status": "..."})
 }
+
+func (uh *UserHandler) GenerateCSRFToken(ctx *gin.Context) {
+	csrfToken := generateToken(32)
+
+	ctx.SetCookie(
+		"csrf_token",
+		csrfToken,
+		60*60, // *60*24, // a day: 24 hours
+		"/",
+		"localhost", // use a env variable later on
+		false,
+		true,
+	)
+
+	ctx.JSON(http.StatusOK, gin.H{"message": "csrf token created", "csrf_token": csrfToken})
+
+}
+
+// TODO:
+// - Create a new table "sessions" to store user_id, session_token, created_at, expires_at
+// - Update the Middleware in internal/routes to look into the sessions based on user_id to compare the
+//   session token with what is in the cookie
+// Remove this func, AuthorizeUser and the one in internal/store
 
 func (uh *UserHandler) AuthorizeUser(ctx *gin.Context, username string) error {
 	var userAuth store.AuthorizeData
@@ -180,9 +202,6 @@ func (uh *UserHandler) AuthorizeUser(ctx *gin.Context, username string) error {
 
 	var err error
 	userAuth.SessionToken, err = ctx.Cookie("session_token")
-	// TODO: Find a middleware to wrap the CSRF with Gorrila
-	userAuth.CSRFToken = ctx.GetHeader("X-CSRF-Token")
-	fmt.Println(userAuth.CSRFToken)
 	fmt.Printf("SessionToken: %v \n csrfToken: %v \n", userAuth.SessionToken, userAuth.CSRFToken)
 	if userAuth.CSRFToken == "" || err != nil {
 		return errors.New("Unathorized access of user 2") // remove digit
