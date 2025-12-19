@@ -14,9 +14,10 @@ import (
 func Routes(app *app.Application) (*gin.Engine, error) {
 	route := gin.Default()
 
-	route.Use(middleware.CSRFMiddleware())
 	store := cookie.NewStore([]byte("the-secret-key"))
 	route.Use(sessions.Sessions("appsession", store))
+	route.Use(middleware.CSRFMiddleware())
+	route.Use(middleware.SessionsMiddleware(app))
 
 	// TODO: Make the category of routes to be in their own go file that meets here with the Routes
 	// This can avoid too much clutter in the routes

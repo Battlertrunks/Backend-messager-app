@@ -148,9 +148,26 @@ func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenE
 	err = trans.QueryRow(query, loginData.Username).Scan(&user.ID, &user.Username, &user.Password)
 
 	if errors.Is(err, sql.ErrNoRows) || !checkPasswordHash([]byte(loginData.Password), []byte(user.Password)) {
-		fmt.Println(err)
 		invalidUsername := errors.New("Invalid username or password")
 		return nil, invalidUsername
+	}
+
+	updateSessionQuery :=
+		`
+		UPDATE sessions SET expires_at = DATETIME('now', '+24 hours')
+			WHERE user_id = $1
+			AND expires_at > DATETIME('now')
+			RETURNING user_id
+		`
+
+	var hasToken string
+	_, err = trans.Exec(updateSessionQuery, user.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+
+	if hasToken != "" {
+		return &UserLoginResponse{user.ID, user.Username}, nil
 	}
 
 	// Create the new session for the user that is logging in...
@@ -161,7 +178,6 @@ func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenE
 			RETURNING session_token;
 		`
 
-	fmt.Printf("sessionToken: %v %v %v \n", user.ID, sessionToken, tokenExpiresAt)
 	// Set the expiration date from "now" to be 24 hours ahead
 	_, err = trans.Exec(sessionQuery, user.ID, sessionToken, time.Now().Add(tokenExpiresAt))
 	if err != nil {
@@ -169,12 +185,8 @@ func (uh *SqliteUserStore) Login(loginData UserData, sessionToken string, tokenE
 		return nil, err
 	}
 
-	fmt.Println("Pre-commiting")
-
 	trans.Commit() // applies the update
-	userLoginResponse := UserLoginResponse{user.ID, user.Username}
-	fmt.Println("pre-returning")
-	return &userLoginResponse, nil
+	return &UserLoginResponse{user.ID, user.Username}, nil
 }
 
 func checkPasswordHash(password, hash []byte) bool {
@@ -197,9 +209,9 @@ func (uh *SqliteUserStore) AuthorizeUser(authData AuthorizeData) error {
 
 	query :=
 		`
-		SELECT user_id, session_token FROM sessions
+		SELECT session_token FROM sessions
 			WHERE user_id = $1
-			AND expire_at > DATETIME('now')
+			AND expires_at > DATETIME('now')
 		`
 
 	type InHouseTokens struct {
@@ -207,11 +219,14 @@ func (uh *SqliteUserStore) AuthorizeUser(authData AuthorizeData) error {
 		CSRFToken    string
 	}
 
+	fmt.Println("pre-token")
 	var token string
-	err = trans.QueryRow(query, authData.UserID).Scan(token)
-	if errors.Is(err, sql.ErrNoRows) {
+	err = trans.QueryRow(query, authData.UserID).Scan(&token)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		fmt.Println(err)
 		return err
 	}
+	fmt.Println("Post-token")
 
 	isSessionTokenValid := token == authData.SessionToken
 

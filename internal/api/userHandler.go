@@ -115,29 +115,7 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 
 	sessionToken := generateToken(32)
 	tokenExpiresAt := time.Hour * 24
-
-	userLoginResponse, err := uh.userStore.Login(userLogin, sessionToken, tokenExpiresAt)
-	if err != nil {
-		fmt.Println("500 ERROR")
-		ctx.JSON(http.StatusServiceUnavailable, gin.H{"message": "Unable to store session data"})
-		return
-	}
-
-	fmt.Println("Pre session")
-
-	session := sessions.Default(ctx)
-	fmt.Println("Default")
-	session.Set("userID", userLoginResponse.UserID)
-	session.Set("username", userLoginResponse.Username)
-	fmt.Println("Sets")
-	err = session.Save()
-
-	fmt.Println("RUN")
-
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Could not save to session"})
-		return
-	}
+	fmt.Println("SESSIONTOKEN:", sessionToken)
 
 	// Set session token
 	ctx.SetCookie(
@@ -146,9 +124,28 @@ func (uh *UserHandler) HandleUserLogin(ctx *gin.Context) {
 		int(tokenExpiresAt),
 		"/",
 		"localhost", // use a env variable later on
-		true,
+		false,
 		true,
 	)
+
+	userLoginResponse, err := uh.userStore.Login(userLogin, sessionToken, tokenExpiresAt)
+	if err != nil {
+		fmt.Println(err)
+		ctx.JSON(http.StatusServiceUnavailable, gin.H{"message": "Unable to store session data"})
+		return
+	}
+
+	fmt.Println("Pre session")
+
+	session := sessions.Default(ctx)
+	session.Set("userID", userLoginResponse.UserID)
+	session.Set("username", userLoginResponse.Username)
+	if err := session.Save(); err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"message": "Could not save to session"})
+		return
+	}
+
+	fmt.Println("SESSIONTOKEN2:", sessionToken)
 
 	ctx.JSON(http.StatusCreated, gin.H{"username": userLogin.Username, "password": userLogin.Password})
 }
@@ -198,7 +195,28 @@ func (uh *UserHandler) GenerateCSRFToken(ctx *gin.Context) {
 }
 
 // TODO:
-// - Create a new table "sessions" to store user_id, session_token, created_at, expires_at
-// - Update the Middleware in internal/routes to look into the sessions based on user_id to compare the
-//   session token with what is in the cookie
-// Remove this func, AuthorizeUser and the one in internal/store
+//   - Create a new table "sessions" to store user_id, session_token, created_at, expires_at
+//   - Update the Middleware in internal/routes to look into the sessions based on user_id to compare the
+//     session token with what is in the cookie
+
+func (uh *UserHandler) AuthorizeUser(ctx *gin.Context) {
+
+	SessionToken, err := ctx.Cookie("session_token")
+	fmt.Println("session_token:", SessionToken)
+	if err != nil {
+		ctx.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+
+	session := sessions.Default(ctx)
+	sessionUserID := session.Get("userID")
+	fmt.Println("user id:", sessionUserID)
+
+	UserID := sessionUserID.(int)
+
+	err = uh.userStore.AuthorizeUser(store.AuthorizeData{UserID: UserID, SessionToken: SessionToken})
+	if err != nil {
+		ctx.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"message": "Error on authorizing user"})
+		return
+	}
+}
